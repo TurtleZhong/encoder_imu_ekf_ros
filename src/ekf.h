@@ -48,7 +48,7 @@ struct EKF_struct {
 };
 
 
-const double PI = 2*acos(0.0);
+const float PI = 2*acos(0.0);
 
 // variables used throughout algorithm 
 Eigen::Matrix<float,16, 1> state(16,1); // state
@@ -74,11 +74,32 @@ void debug(const std::string & str);
 // convert vector to skew symmetric matrix
 void to_skew(const Eigen::Matrix<float,3,1>& v, Eigen::Matrix<float,3,3> &m);
 
-// state transition matrix
-void computePhi(const Eigen::Matrix<float,3,1> &f_i, const Eigen::Matrix<float,3,3> &R_body_to_nav_next, Eigen::Matrix<float,15,15> &Phi);
+void computeF(const Eigen::Matrix<float,3,1> &f_i, const Eigen::Matrix<float,3,3> &R_body_to_nav_next, Eigen::Matrix<float,15,15> &F);
 
-// encoder model noise
-void computeQdk(const Eigen::Matrix<float,3,3> &R_body_to_nav_next, Eigen::Matrix<float,15,15> &Qdk);
+// G matrix. dx_dot = F*dx + G*w 
+void computeG(const Eigen::Matrix<float,3,3> &R_body_to_nav_next, Eigen::Matrix<float,15,12> &G);
+
+// state transition matrix
+void computePhi(const Eigen::Matrix<float,3,1> &f_i,const Eigen::Matrix<float,3,3> &R_body_to_nav_next, Eigen::Matrix<float,15,15> &Phi)
+{
+	// compute F matrix: F is 15 X 15
+	Eigen::Matrix<float,15,15> F;
+
+	computeF(f_i, R_body_to_nav_next, F);
+
+	// compute system transition matrix Phi
+	Phi = (F*filter.dt).exp();
+}
+
+// old technique: compute discrete-time process noise covariance matrix (first order approximation)
+void computeQdk(const Eigen::Matrix<float,3,3> &R_body_to_nav_next, Eigen::Matrix<float,15,15> &Qdk)
+{
+	// compute G. G is 15 x 12.
+	Eigen::Matrix<float,15,12> G;
+	computeG(R_body_to_nav_next,G);
+
+	Qdk = G*(filter.Q)*G.transpose()*filter.dt;
+}
 
 // measurement update using rover kinematic model
 void encoderMeasurementUpdate();

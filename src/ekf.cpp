@@ -23,11 +23,10 @@ v(2), 0, -v(0),
 }
 
 // compute state transition matrix
-void computePhi(const Eigen::Matrix<float,3,1> &f_i,const Eigen::Matrix<float,3,3> &R_body_to_nav_next, Eigen::Matrix<float,15,15> &Phi)
+void computeF(const Eigen::Matrix<float,3,1> &f_i, const Eigen::Matrix<float,3,3> &R_body_to_nav_next, Eigen::Matrix<float,15,15> &F)
 {
 	// compute F matrix: F is 15 x 15
-	Eigen::Matrix<float,15,15> F = Eigen::Matrix<float,15,15>::Zero();
-
+	// Eigen::Matrix<float,15,15> F = Eigen::Matrix<float,15,15>::Zero();
 	// store relevant values in F (see writeup for derivation) THIS PART IS KEY, where my code differs from standard
 	Eigen::Matrix<float,3,3> f_i_skew(3,3);
 	to_skew(f_i,f_i_skew);
@@ -38,25 +37,50 @@ void computePhi(const Eigen::Matrix<float,3,1> &f_i,const Eigen::Matrix<float,3,
 	F.block<3,3>(9,9) = Eigen::Matrix<float,3,3>::Identity()*-1.0/200; // Fa
 	F.block<3,3>(12,12) = Eigen::Matrix<float,3,3>::Identity()*-1.0/200; // Fg
 
-	// compute system transition matrix Phi
-	Phi = (F*filter.dt).exp();
 }
 
 // compute noise matrix
-void computeQdk(const Eigen::Matrix<float,3,3> &R_body_to_nav_next, Eigen::Matrix<float,15,15> &Qdk)
+void computeG(const Eigen::Matrix<float,3,3> &R_body_to_nav_next, Eigen::Matrix<float,15,12> &G)
 {
 	// compute G. G is 15 x 12.
-	Eigen::Matrix<float,15,12> G = Eigen::Matrix<float,15,12>::Zero();
+	// Eigen::Matrix<float,15,12> G = Eigen::Matrix<float,15,12>::Zero();
 	G.block<3,3>(3,0) = -1*R_body_to_nav_next;
 	G.block<3,3>(6,3) = R_body_to_nav_next;
 	G.block<3,3>(9,6) = Eigen::Matrix<float,3,3>::Identity();
 	G.block<3,3>(12,9) = Eigen::Matrix<float,3,3>::Identity();
-	Qdk = G*(filter.Q)*G.transpose()*filter.dt;
+	
+}
+
+
+void computePhiAndQdk(const Eigen::Matrix<float,3,1> &f_i, const Eigen::Matrix<float,3,3> &R_body_to_nav_next, Eigen::Matrix<float,15,15> &Phi, Eigen::Matrix<float,15,15> &Qdk)
+{
+	// van loan algorithm: https://www.cs.cornell.edu/cv/ResearchPDF/computing.integrals.involving.Matrix.Exp.pdf
+	// formulate larger matrix
+	// compute F matrix: F is 9 x 9
+	Eigen::Matrix<float,15,15> F = Eigen::Matrix<float,15,15>::Zero();
+	computeF(f_i, R_body_to_nav_next, F);
+
+	Eigen::Matrix<float,15,12> G = Eigen::Matrix<float,15,12>::Zero();
+	computeG(R_body_to_nav_next, G);
+
+	// empty matrix
+	Eigen::Matrix<float,30,30> A = Eigen::Matrix<float,30,30>::Zero();
+
+	// fill in A matrix according to algorithm
+	A.block<15,15>(0,0) = -F;
+	A.block<15,15>(15,15) = F.transpose();
+	A.block<15,15>(0,15) = G*(filter.Q)*G.transpose();
+	A = A*filter.dt;
+
+	// matrix exponential
+	Eigen::Matrix<float,30,30> B = A.exp();
+	Phi = B.block<15,15>(15,15).transpose();
+	Qdk = Phi*B.block<15,15>(0,15);
 }
 
 void stationaryMeasurementUpdate(const Eigen::Matrix<float,3,3> & R_body_to_nav)
 {
-	debug("stationary update!");
+	debug("matrix exponential stationary update!");
 	rover_stationary = false;
 
 	// stationary update matrix: Ha is 3 x 15
@@ -352,12 +376,9 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& msg)
 
 	// compute state transition matrix Phi
 	Eigen::Matrix<float,15,15> Phi(15,15);
-	computePhi(f_i, R_body_to_nav_next, Phi); // TODO Review
-	//TODO do the Van Load computePhi (@A)
-
 	// compute Qdk (discrete noise). Qdk is 15 x 15
 	Eigen::Matrix<float,15,15> Qdk(15,15);
-	computeQdk(R_body_to_nav_next, Qdk); // TODO Review
+	computePhiAndQdk(f_i, R_body_to_nav_next, Phi, Qdk);
 
 	// update covariance (15x15)
 	cov = Phi*cov*Phi.transpose()+Qdk;
