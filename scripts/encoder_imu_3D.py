@@ -75,7 +75,7 @@ def callbackTicks(data):
 	# update states
 	x = x + Dc*math.cos(psi)*math.cos(theta)
 	y = y + Dc*math.sin(psi)*math.cos(theta)
-	z = z + Dc*math.sin(theta)
+	z = z - Dc*math.sin(theta)
 
 	# update previous tick count
 	ticks_l_prev = ticks_l_curr
