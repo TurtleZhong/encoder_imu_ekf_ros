@@ -146,9 +146,11 @@ void EKF(const Eigen::MatrixXf & H, const Eigen::MatrixXf & R, const Eigen::Matr
 
 	// compute Kalman gain
 	Eigen::MatrixXf K = cov*H.transpose()*((R+H*cov*H.transpose()).inverse()); // fix auto later
+	//std::cout << "here is K\n" << std::endl << K << std::endl;
 
 	// compute state correction
 	Eigen::Matrix<float,15,1> dx = K*z;
+	//std::cout << "here is z\n" << std::endl << z << std::endl;
 
 	// 	rotation update 
 	Eigen::Matrix<float,3,1> ro = dx(Eigen::seq(6,8));
@@ -271,6 +273,72 @@ void encoders_callback(const std_msgs::Int32MultiArray::ConstPtr& msg)
 
 }
 
+//Takes the predicted and measured quaternions and returns the small angle (error) between them
+Eigen::Matrix<float,3,1> quats_to_small(Eigen::Quaterniond p_meas,Eigen::Quaterniond p_pred)
+{
+	Eigen::Matrix3d R_m = p_meas.normalized().toRotationMatrix();
+	Eigen::Matrix3d R_p = p_pred.normalized().toRotationMatrix();
+	Eigen::Matrix3d R = (R_m.transpose()) * R_m;
+	//std::cout << "Here is the matrix m:\n" << std::endl << R << std::endl;
+
+	Eigen::Matrix<float,3,1>res = Eigen::Matrix<float,3,1>::Zero();
+	res(0) = -1.0*R(1,2);
+	res(1) = -1.0*R(2,0);
+	res(2) = -1.0*R(0,1);
+	std::cout << "here is res\n" << std::endl << res << std::endl;
+	return res;
+}
+
+void fuse_orientation(const sensor_msgs::Imu::ConstPtr& msg)
+{
+	float mag_field = 25;
+	// predicted orientation from IMU
+	Eigen::Quaterniond p_meas;
+	p_meas.w() = msg->orientation.w;
+	p_meas.x() = msg->orientation.x;
+	p_meas.y() = msg->orientation.y;
+	p_meas.z() = msg->orientation.z;
+
+	//TODO "subtract" out initial orientation @V ?
+	//std::cout << msg->orientation.w << msg->orientation.x << msg->orientation.y << msg->orientation.z << "YO\n";
+	//std::cout <<  p_meas.w() << p_meas.x() << p_meas.y() <<  p_meas.z();
+
+	// encoder measurement matrix: Ho is 3 x 15
+	Eigen::Matrix<float,1,15> Ho = Eigen::Matrix<float,1,15>::Zero();
+	//Ho.setZero(1,15);
+	//Ho.block<3,3>(0,6) = Eigen::Matrix<float,3,3>::Identity();
+	//Ho.block<3,3>(0,3) = Eigen::Matrix<float,3,3>::Identity();
+	//Ho(2,7) = 1.0*mag_field;
+	Ho(0,8) =-1.0*mag_field;
+	
+	// predicted quaternion TODO @V quaternion or rho ?
+	Eigen::Quaterniond p_pred;
+	p_pred.w() = state(3);
+	p_pred.x() = state(4);
+	p_pred.y() = state(5);
+	p_pred.z() = state(6);
+
+	// variables to fill
+	Eigen::MatrixXf H; // measurement matrix
+	Eigen::MatrixXf R; // noise matrix
+	Eigen::MatrixXf small; // predicted measurement
+	Eigen::MatrixXf y_meas; // actual measurement
+	
+	// measurement and noise matrices 
+	H = Ho;
+	R = Rs;
+	
+ 	small =  quats_to_small(p_meas, p_pred);
+	
+	// residual z
+	Eigen::Matrix<float,1,1> z = Eigen::Matrix<float,1,1>::Zero();
+        z(0,0) = small(2,0);
+	
+	// call filter
+	//EKF(H,R,z,false);
+}
+
+
 // imu callback
 // updates orientation and position using quaternion math and physics kinematic equations
 // Prediction Step/Time Propogation/State Update/Vehicle Kinematics step
@@ -279,7 +347,7 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& msg)
 	// Uncomment to time things
 	//filter.timer.PrintDt("Ignore"); 
 	//filter.timer.PrintDt("IMU"); 
-
+	
 	// IMU data
 	geometry_msgs::Vector3 w = msg->angular_velocity;
 	geometry_msgs::Vector3 f = msg->linear_acceleration;
@@ -397,6 +465,9 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& msg)
 		br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "IMU"));
 	}
 
+	//Call "Sun Sensor" fusion TODO move up and make parallel
+	fuse_orientation(msg);
+
 }
 //TODO include IMU's orientation into this EKF (as if it was a sun sensor. @V
 
@@ -420,6 +491,11 @@ void initialize_ekf(ros::NodeHandle &n)
 		ROS_INFO("initialize_ekf responded with data."); 
 		// store received data
 		geometry_msgs::Quaternion b = srv.response.init_orientation;
+		/*original_orientation(0,0) = b.w;
+		original_orientation(1,0) = b.x;
+		original_orientation(2,0) = b.x;
+		original_orientation(3,0) = b.z;*/
+
 		Eigen::Vector3d x_g = {srv.response.gyro_bias[0].data, srv.response.gyro_bias[1].data, srv.response.gyro_bias[2].data}; //biases
 		//TODO accelearation biases
 
@@ -437,6 +513,7 @@ void initialize_ekf(ros::NodeHandle &n)
 		n.param<float>("sigma_nug",sigma_nug,0.00068585); // rad/s/rt_Hz, Gyro white noise
 		n.param<float>("sigma_xa",sigma_xa,0.00001483);  // Accel (rate) random walk m/s3 1/sqrt(Hz)
 		n.param<float>("sigma_nua",sigma_nua,0.00220313); // accel white noise
+		//TODO orientation sigmas @V
 
 		// noise matrix for IMU (Q) //TODO can optimize
 		for (int i = 0; i < 3; i++)
@@ -449,6 +526,8 @@ void initialize_ekf(ros::NodeHandle &n)
 
 		// noise matrix for accelerometer (Ra)
 		filter.Ra = Eigen::Matrix<float,3,3>::Identity(3,3)*(sigma_nua*sigma_nua);
+		Rs = Eigen::Matrix<float,1,1>::Zero(1,1);//Identity(3,3)*(sigma_nua*sigma_nua*0.00000000001);//TODO @V fix: type
+		//TODO Rs @V
 
 		// gravity vector
 		n.param<float>("g",filter.g,9.8021);
