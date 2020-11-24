@@ -35,8 +35,8 @@ theta_offset = 0
 def imu_callback(data):
 	global theta, psi, phi, psi_offset, first_time_imu
 
-	# get orientation data
-	angles = tf.transformations.euler_from_quaternion([data.orientation.x, data.orientation.y,data.orientation.z,data.orientation.w], 'szyx')
+	# get orientation data: https://dreamanddead.github.io/2019/04/24/understanding-euler-angles.html
+	angles = tf.transformations.euler_from_quaternion([data.orientation.x, data.orientation.y,data.orientation.z,data.orientation.w], 'rzyx')
 	psi = angles[0]
 	theta = angles[1]
 	phi = angles[2]
@@ -88,14 +88,21 @@ def callbackTicks(data):
 	# header
 	odom.header.seq = seq
 	odom.header.stamp = rospy.Time.now()
-	odom.header.frame_id = "map"
+	odom.header.frame_id = "odom"
 
 	# pose
-	# quaternion created from yaw, pitch, roll. the 'szyx' means rotation applied to static frame in order z y x (yaw, pitch, roll)
-	odom_quat = tf.transformations.quaternion_from_euler(psi, theta, phi, 'szyx')
+	# quaternion created from yaw, pitch, roll. the 'szyx' means rotation applied to moving frame in order z y x (yaw, pitch, roll)
+	odom_quat = tf.transformations.quaternion_from_euler(psi, theta, phi, 'rzyx')
 	odom.pose.pose = Pose(Point(x, y, z), Quaternion(*odom_quat))
-
 	odom_pub.publish(odom)
+
+	# publish tf
+    br = tf.TransformBroadcaster()
+    br.sendTransform((x, y, z),
+                     tf.transformations.quaternion_from_euler(psi, theta, phi),
+                     rospy.Time.now(),
+                     "/base_link",
+                     "/odom")
 
 	seq += 1
 

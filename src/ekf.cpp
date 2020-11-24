@@ -216,6 +216,7 @@ void EKF(const Eigen::MatrixXf & H, const Eigen::MatrixXf & R, const Eigen::Matr
 	//  update encoder start state: position and orientation TODO atomicity? from @V
 	enc_meas << state[0],state[1],state[2], 0, b_next.w(), b_next.x(), b_next.y(), b_next.z();
 
+	static int counter = 0;
 	if (true)
 	{
 		Eigen::Quaternion<float> b_next_body_to_nav = b_next.inverse();
@@ -226,6 +227,11 @@ void EKF(const Eigen::MatrixXf & H, const Eigen::MatrixXf & R, const Eigen::Matr
 		tf::Quaternion q(b_next_body_to_nav.x(),b_next_body_to_nav.y(),b_next_body_to_nav.z(),b_next_body_to_nav.w());
 		transform.setRotation(q);
 		br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "IMU"));
+		counter++;
+		if (counter%10 == 0)
+		{
+			std::cout << state(0) << "," << state(1) << "," << state(2) << std::endl;
+		}
 	}
 }
 
