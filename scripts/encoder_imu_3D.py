@@ -29,27 +29,33 @@ tickr_r_prev = 0
 first_time_encoder = True
 first_time_imu = True
 theta_offset = 0
+quat = []
 
 # previous covariance
 # update orientation here. use RK3
 def imu_callback(data):
-	global theta, psi, phi, psi_offset, first_time_imu
+	global quat
+	quat = [data.orientation.x, data.orientation.y,data.orientation.z, data.orientation.w]
 
-	# get orientation data: https://dreamanddead.github.io/2019/04/24/understanding-euler-angles.html
-	angles = tf.transformations.euler_from_quaternion([data.orientation.x, data.orientation.y,data.orientation.z,data.orientation.w], 'rzyx')
-	psi = angles[0]
-	theta = angles[1]
-	phi = angles[2]
+def rotate(q1, v):
+	if (sum(v) == 0.0):
+		return [0,0,0]
+	q2 = list(v)
+	q2.append(0.0)
+	q3 = tf.transformations.quaternion_multiply(
+		tf.transformations.quaternion_multiply(q1, q2), 
+		tf.transformations.quaternion_conjugate(q1))
+	return tf.transformations.quaternion_multiply(
+		tf.transformations.quaternion_multiply(q1, q2), 
+		tf.transformations.quaternion_conjugate(q1)
+	)[:3]
 
-	if (first_time_imu):
-		psi_offset = psi
-		first_time_imu = False
-		return	
-	psi = psi - psi_offset	
-		
 def callbackTicks(data):
-	global x, y, z, psi, theta, phi, ticks_l_prev, ticks_r_prev, first_time_encoder, seq
-	#rospy.loginfo(rospy.get_caller_id() + "Right %s", data.data)
+	global x, y, z, quat, ticks_l_prev, ticks_r_prev, first_time_encoder, seq
+
+	if (len(quat) == 0):
+		return
+
 	if (first_time_encoder):
 		ticks_l_prev = data.data[0]
 		ticks_r_prev = data.data[1]
@@ -73,9 +79,12 @@ def callbackTicks(data):
 	Dc = (Dl+Dr)/2
 	
 	# update states
-	x = x + Dc*math.cos(psi)*math.cos(theta)
-	y = y + Dc*math.sin(psi)*math.cos(theta)
-	z = z - Dc*math.sin(theta)
+	d_pos_local = [Dc, 0.0, 0.0]
+	d_pos_global = rotate(quat, d_pos_local)
+
+	x = x + d_pos_global[0]
+	y = y + d_pos_global[1]
+	z = z + d_pos_global[2]
 
 	# update previous tick count
 	ticks_l_prev = ticks_l_curr
@@ -99,7 +108,7 @@ def callbackTicks(data):
 	# publish tf
 	br = tf.TransformBroadcaster()
 	br.sendTransform((x, y, z),
-					 tf.transformations.quaternion_from_euler(psi, theta, phi),
+					 quat,
 					 rospy.Time.now(),
 					 "/base_link",
 					 "/odom")
