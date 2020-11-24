@@ -97,12 +97,12 @@ def callbackTicks(data):
 	odom_pub.publish(odom)
 
 	# publish tf
-    br = tf.TransformBroadcaster()
-    br.sendTransform((x, y, z),
-                     tf.transformations.quaternion_from_euler(psi, theta, phi),
-                     rospy.Time.now(),
-                     "/base_link",
-                     "/odom")
+	br = tf.TransformBroadcaster()
+	br.sendTransform((x, y, z),
+					 tf.transformations.quaternion_from_euler(psi, theta, phi),
+					 rospy.Time.now(),
+					 "/base_link",
+					 "/odom")
 
 	seq += 1
 
