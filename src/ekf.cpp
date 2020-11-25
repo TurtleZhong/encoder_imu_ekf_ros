@@ -4,10 +4,14 @@
 #include "ekf.h"
 #include "encoder_imu_ekf_ros/initRequest.h"
 #include "ros/ros.h"
+#include "ros/time.h"
 #include "sensor_msgs/Imu.h"
 #include "std_msgs/Int32MultiArray.h"
+#include "nav_msgs/Odometry.h"
 #include <tf/transform_broadcaster.h>
 #include <cstdlib>
+
+ros::Publisher pose_pub;//publishes nav_msgs/Odometry on /pose
 
 void debug(auto str)
 {
@@ -204,6 +208,24 @@ void EKF(const Eigen::MatrixXf & H, const Eigen::MatrixXf & R, const Eigen::Matr
 		tf::Quaternion q(b_next_body_to_nav.x(),b_next_body_to_nav.y(),b_next_body_to_nav.z(),b_next_body_to_nav.w());
 		transform.setRotation(q);
 		br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "IMU"));
+
+
+
+		/*for display purposes TODO add covariance TODO remove*/
+		nav_msgs::Odometry msg;
+		msg.header.frame_id = "map";
+		ros::Time cur = ros::Time::now();
+		msg.header.stamp.sec = cur.toSec();
+		msg.header.stamp.nsec = cur.toNSec();
+		msg.pose.pose.position.x = state(0);
+		msg.pose.pose.position.y = state(1);
+		msg.pose.pose.position.z = state(2);
+		msg.pose.pose.orientation.x = q.x();
+		msg.pose.pose.orientation.y = q.y();
+		msg.pose.pose.orientation.z = q.z();
+		msg.pose.pose.orientation.w = q.w();
+
+		pose_pub.publish(msg);
 	}
 }
 
@@ -285,13 +307,13 @@ Eigen::Matrix<float,3,1> quats_to_small(Eigen::Quaterniond p_meas,Eigen::Quatern
 	res(0) = -1.0*R(1,2);
 	res(1) = -1.0*R(2,0);
 	res(2) = -1.0*R(0,1);
-	std::cout << "here is res\n" << std::endl << res << std::endl;
+	//std::cout << "here is res\n" << std::endl << res << std::endl;
 	return res;
 }
 
 void fuse_orientation(const sensor_msgs::Imu::ConstPtr& msg)
 {
-	float mag_field = 25;
+	float mag_field = 1;
 	// predicted orientation from IMU
 	Eigen::Quaterniond p_meas;
 	p_meas.w() = msg->orientation.w;
@@ -466,7 +488,7 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& msg)
 	}
 
 	//Call "Sun Sensor" fusion TODO move up and make parallel
-	fuse_orientation(msg);
+	//fuse_orientation(msg);
 
 }
 //TODO include IMU's orientation into this EKF (as if it was a sun sensor. @V
@@ -579,6 +601,9 @@ int main(int argc, char **argv)
 
 	// initialize ekf
 	initialize_ekf(n);
+
+	//pose publisher
+	pose_pub = n.advertise<nav_msgs::Odometry>("pose", 1000);
 
 	// encoder callback
 	ros::Subscriber sub_encoders = n.subscribe("wheels", 0, encoders_callback);
