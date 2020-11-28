@@ -6,8 +6,12 @@
 #include "ros/ros.h"
 #include "sensor_msgs/Imu.h"
 #include "std_msgs/Int32MultiArray.h"
+#include "nav_msgs/Odometry.h"
 #include <tf/transform_broadcaster.h>
 #include <cstdlib>
+
+
+ros::Publisher pose_pub;//publishes nav_msgs/Odometry on /pose
 
 void debug(auto str)
 {
@@ -202,6 +206,25 @@ void EKF(const Eigen::MatrixXf & H, const Eigen::MatrixXf & R, const Eigen::Matr
 		tf::Quaternion q(b_next_body_to_nav.x(),b_next_body_to_nav.y(),b_next_body_to_nav.z(),b_next_body_to_nav.w());
 		transform.setRotation(q);
 		br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "IMU"));
+
+		std::cout << state(0) << "," << state(1) << "," << state(2) << "\n";
+
+
+		/*for display purposes TODO add covariance TODO remove*/
+                nav_msgs::Odometry msg;
+                msg.header.frame_id = "map";
+                ros::Time cur = ros::Time::now();
+                msg.header.stamp.sec = cur.toSec();
+                msg.header.stamp.nsec = cur.toNSec();
+                msg.pose.pose.position.x = state[0];
+                msg.pose.pose.position.y = state[1];
+                msg.pose.pose.position.z = state[2];
+                msg.pose.pose.orientation.x = q.x();
+                msg.pose.pose.orientation.y = q.y();
+                msg.pose.pose.orientation.z = q.z();
+                msg.pose.pose.orientation.w = q.w();
+
+                pose_pub.publish(msg);
 	}
 }
 
@@ -458,7 +481,7 @@ void initialize_ekf(ros::NodeHandle &n)
 					//note that the slip can only cause you to overshoot your estimate
 
 		// robot dimensional parameters
-		n.param<float>("L",filter.L, 0.6096); // base width (m)
+		n.param<float>("L",filter.L, 0.6096); // base width (m) //was 0.6096
 		n.param<float>("R",filter.R, 0.127); // wheel radius (m)
 		n.param<int>("ticks_per_rev", filter.ticks_per_rev, 1440); // wheel encoder parameters
 		n.param<float>("ticks_per_m", filter.ticks_per_m,filter.ticks_per_rev/(PI*2*filter.R));
@@ -497,6 +520,10 @@ int main(int argc, char **argv)
 	ros::init(argc, argv, "ekf");
 
 	ros::NodeHandle n;
+
+	//pose publisher
+        pose_pub = n.advertise<nav_msgs::Odometry>("pose", 1000);
+
 
 	// initialize ekf
 	initialize_ekf(n);
