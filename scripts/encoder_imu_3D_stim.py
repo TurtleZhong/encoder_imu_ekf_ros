@@ -17,7 +17,6 @@ import tf
 x = 0
 y = 0
 z = 0
-imu_height = 0.3
 psi = 0 # yaw
 theta = 0 # pitch
 phi = 0 # roll
@@ -34,9 +33,9 @@ quat = []
 
 # previous covariance
 # update orientation here. use RK3
-def imu_callback(data):
+def quat_callback(data):
 	global quat
-	quat = [data.orientation.x, data.orientation.y,data.orientation.z, data.orientation.w]
+	quat = [data.x, data.y,data.z, data.w]
 
 def rotate(q1, v):
 	if (sum(v) == 0.0):
@@ -101,9 +100,9 @@ def callbackTicks(data):
 	odom.header.frame_id = "odom"
 
 	# pose
-	global imu_height
 	# quaternion created from yaw, pitch, roll. the 'szyx' means rotation applied to moving frame in order z y x (yaw, pitch, roll)
-	odom.pose.pose = Pose(Point(x, y, z + imu_height), Quaternion(quat[0],quat[1],quat[2],quat[3]))
+	odom_quat = tf.transformations.quaternion_from_euler(psi, theta, phi, 'rzyx')
+	odom.pose.pose = Pose(Point(x, y, z), Quaternion(*odom_quat))
 	odom_pub.publish(odom)
 
 	# publish tf
@@ -111,9 +110,13 @@ def callbackTicks(data):
 	br.sendTransform((x, y, z),
 					 quat,
 					 rospy.Time.now(),
-					 "/base_footprint",
+					 "/base_link",
 					 "/odom")
+
 	seq += 1
+	if (seq == 10):
+		seq = 0
+		print(str(x) + ',' + str(y) + ',' + str(z))
 
 
 def main():
@@ -124,7 +127,7 @@ def main():
 	rospy.Subscriber("wheels", Int32MultiArray, callbackTicks)
 
 	# subscribe to IMU
-	rospy.Subscriber("/imu/data", Imu, imu_callback)
+	rospy.Subscriber("/quat", Quaternion, quat_callback)
 
 	# spin() simply keeps python from exiting until this node is stopped
 	rospy.spin()
