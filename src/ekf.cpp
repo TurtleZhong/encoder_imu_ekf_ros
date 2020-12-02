@@ -216,7 +216,7 @@ void EKF(const Eigen::MatrixXf & H, const Eigen::MatrixXf & R, const Eigen::Matr
 	//  update encoder start state: position and orientation TODO atomicity? from @V
 	enc_meas << state[0],state[1],state[2], 0, b_next.w(), b_next.x(), b_next.y(), b_next.z();
 
-	static int counter = 0;
+	// static int counter = 0;
 	if (true)
 	{
 		Eigen::Quaternion<float> b_next_body_to_nav = b_next.inverse();
@@ -227,19 +227,19 @@ void EKF(const Eigen::MatrixXf & H, const Eigen::MatrixXf & R, const Eigen::Matr
 		tf::Quaternion q(b_next_body_to_nav.x(),b_next_body_to_nav.y(),b_next_body_to_nav.z(),b_next_body_to_nav.w());
 		transform.setRotation(q);
 		br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "IMU"));
-		counter++;
-		if (counter%10 == 0)
-		{
-			std::cout << state(0) << "," << state(1) << "," << state(2) << std::endl;
-		}
+		// counter++;
+		// if (counter%50 == 0)
+		// {
+		// 	std::cout << state(0) << "," << state(1) << "," << state(2) << std::endl;
+		// }
 	}
 }
 
 // encoders callback
 void encoders_callback(const std_msgs::Int32MultiArray::ConstPtr& msg)
 {		
-	int ticks_l_curr = msg->data[0]; // total ticks left wheel
-	int ticks_r_curr = msg->data[1]; // total ticks right wheel
+	int ticks_l_curr = (msg->data[0]+msg->data[2])/2.0; // total ticks left wheel
+	int ticks_r_curr = (msg->data[1]+msg->data[3])/2.0; // total ticks right wheel
 	
 	if (first_time_enc)
 	{
@@ -260,6 +260,7 @@ void encoders_callback(const std_msgs::Int32MultiArray::ConstPtr& msg)
 
 	// get encoder model position estimate. starts at end of last measurement update
 	Eigen::Matrix<float,3,1> pos(enc_meas[0],enc_meas[1],enc_meas[2]);
+
 	// get encoder model orientation
 	Eigen::Quaternion<float> b_q = Eigen::Quaternion<float>(enc_meas[4],enc_meas[5],enc_meas[6],enc_meas[7]);
 
@@ -272,18 +273,23 @@ void encoders_callback(const std_msgs::Int32MultiArray::ConstPtr& msg)
 	enc_meas << pos[0],pos[1],pos[2],0,0,0,0,0;
 
 	// // noise due to distance driven = k*Dl
-	Eigen::Matrix<float,2,2> U;
-	U << (filter.k*abs(Dl))*(filter.k*abs(Dl)), 0,
-	0, (filter.k*abs(Dr))*(filter.k*abs(Dr));
+	Eigen::Matrix<float,3,3> Q_tst;
+	Q_tst << 0.25*(filter.k*abs(Dl)*filter.k*abs(Dl)+filter.k*abs(Dr)*filter.k*abs(Dr)), 0.0, 0.0, 
+	0.0, 0.25*(filter.k*abs(Dl)*filter.k*abs(Dl)+filter.k*abs(Dr)*filter.k*abs(Dr)), 0.0, 0.0,0.0,0.0;
+
+	// Eigen::Matrix<float,2,2> U;
+	// U << (filter.k*abs(Dl))*(filter.k*abs(Dl)), 0,
+	// 0, (filter.k*abs(Dr))*(filter.k*abs(Dr));
 
 	// pos = pos + R*F*[Dc, 0, 0]'
 	// (R*F)*U*(R*F)'
-	Eigen::Matrix<float,3,2> F;
-	F << 1/2.0,1/2.0, 0,0,0,0;
+	// Eigen::Matrix<float,3,2> F;
+	// F << 1/2.0,1/2.0, 0,0,0,0;
 	Eigen::Matrix<float,3,3> R_body_to_nav = b_inv.toRotationMatrix();
 
 	// transform noise covariance
-	Re = (R_body_to_nav*F)*U*(R_body_to_nav*F).transpose();
+	//Re = (R_body_to_nav*F)*U*(R_body_to_nav*F).transpose();
+	Re = R_body_to_nav*Q_tst*(R_body_to_nav.transpose());
 
 	if (false)
 	{
@@ -453,7 +459,7 @@ void initialize_ekf(ros::NodeHandle &n)
 		// filter rate parameters
 		int num_data, hz; // number of data points used to initialize, imu hz
 		n.param("num_data",num_data,1000); //num init pts
-		n.param("imu_hz",hz,200);
+		n.param("imu_hz",hz,125);
 		filter.dt = 1.0/hz;
 		filter.num_data = num_data;
 		int T = num_data/hz;  //number of measurements over rate of IMU
@@ -478,15 +484,15 @@ void initialize_ekf(ros::NodeHandle &n)
 		filter.Ra = Eigen::Matrix<float,3,3>::Identity(3,3)*(sigma_nua*sigma_nua);
 
 		// gravity vector
-		n.param<float>("g",filter.g,9.8021);
+		n.param<float>("g",filter.g,9.80665);
 
 		// encoder slip model, % slip
-		n.param<float>("k",filter.k,0.05); //TODO  keep editing and discover better definition of this 
+		n.param<float>("k",filter.k,0.4); //TODO  keep editing and discover better definition of this 
 					//note that the slip can only cause you to overshoot your estimate
 
 		// robot dimensional parameters
-		n.param<float>("L",filter.L, 0.6096); // base width (m)
-		n.param<float>("R",filter.R, 0.127); // wheel radius (m)
+		n.param<float>("L",filter.L, 0.577); // base width (m)
+		n.param<float>("R",filter.R, 0.1016); // wheel radius (m)
 		n.param<int>("ticks_per_rev", filter.ticks_per_rev, 1440); // wheel encoder parameters
 		n.param<float>("ticks_per_m", filter.ticks_per_m,filter.ticks_per_rev/(PI*2*filter.R));
 
