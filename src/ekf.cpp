@@ -216,7 +216,7 @@ void EKF(const Eigen::MatrixXf & H, const Eigen::MatrixXf & R, const Eigen::Matr
 	//  update encoder start state: position and orientation TODO atomicity? from @V
 	enc_meas << state[0],state[1],state[2], 0, b_next.w(), b_next.x(), b_next.y(), b_next.z();
 
-	// static int counter = 0;
+	//static int counter = 0;
 	if (true)
 	{
 		Eigen::Quaternion<float> b_next_body_to_nav = b_next.inverse();
@@ -227,11 +227,11 @@ void EKF(const Eigen::MatrixXf & H, const Eigen::MatrixXf & R, const Eigen::Matr
 		tf::Quaternion q(b_next_body_to_nav.x(),b_next_body_to_nav.y(),b_next_body_to_nav.z(),b_next_body_to_nav.w());
 		transform.setRotation(q);
 		br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "IMU"));
-		// counter++;
-		// if (counter%50 == 0)
-		// {
-		// 	std::cout << state(0) << "," << state(1) << "," << state(2) << std::endl;
-		// }
+		//counter++;
+		//if (counter%50 == 0)
+		//{
+		//	std::cout << state(0) << "," << state(1) << "," << state(2) << std::endl;
+		//}
 	}
 }
 
@@ -275,7 +275,7 @@ void encoders_callback(const std_msgs::Int32MultiArray::ConstPtr& msg)
 	// // noise due to distance driven = k*Dl
 	Eigen::Matrix<float,3,3> Q_tst;
 	Q_tst << 0.25*(filter.k*abs(Dl)*filter.k*abs(Dl)+filter.k*abs(Dr)*filter.k*abs(Dr)), 0.0, 0.0, 
-	0.0, 0.25*(filter.k*abs(Dl)*filter.k*abs(Dl)+filter.k*abs(Dr)*filter.k*abs(Dr)), 0.0, 0.0,0.0,0.0;
+	0.0, 0.25*(filter.k*abs(Dl)*filter.k*abs(Dl)+filter.k*abs(Dr)*filter.k*abs(Dr)), 0.0, 0.0,0.0,0.0; // try difference instead of sum. also some z error.
 
 	// Eigen::Matrix<float,2,2> U;
 	// U << (filter.k*abs(Dl))*(filter.k*abs(Dl)), 0,
@@ -493,7 +493,7 @@ void initialize_ekf(ros::NodeHandle &n)
 		// robot dimensional parameters
 		n.param<float>("L",filter.L, 0.577); // base width (m)
 		n.param<float>("R",filter.R, 0.1016); // wheel radius (m)
-		n.param<int>("ticks_per_rev", filter.ticks_per_rev, 1440); // wheel encoder parameters
+		n.param<int>("ticks_per_rev", filter.ticks_per_rev, 1316); // wheel encoder parameters
 		n.param<float>("ticks_per_m", filter.ticks_per_m,filter.ticks_per_rev/(PI*2*filter.R));
 
 		//http://web.mit.edu/2.05/www/Handout/HO2.PDF, euler angles != RPY. xyz euler = zyx rpy
