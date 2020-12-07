@@ -13,22 +13,15 @@ from geometry_msgs.msg import Point, Pose, Quaternion, Twist, Vector3
 from sensor_msgs.msg import Imu
 import tf
 
-# state for 3D robot (x,y,z,psi,theta,phi)
+# state for 3D robot (x,y,z,quat)
 x = 0
 y = 0
 z = 0
-psi = 0 # yaw
-theta = 0 # pitch
-phi = 0 # roll
-seq = 0
-psi_offset = 0
 
 # record previous state 
 ticks_l_prev = 0
 tickr_r_prev = 0
 first_time_encoder = True
-first_time_imu = True
-theta_offset = 0
 quat = []
 
 # previous covariance
@@ -51,7 +44,7 @@ def rotate(q1, v):
 	)[:3]
 
 def callbackTicks(data):
-	global x, y, z, quat, ticks_l_prev, ticks_r_prev, first_time_encoder, seq
+	global x, y, z, quat, ticks_l_prev, ticks_r_prev, first_time_encoder
 
 	if (len(quat) == 0):
 		return
@@ -66,8 +59,8 @@ def callbackTicks(data):
 	L = 0.6096
 	R = 0.127
 
-	# ticks/m... 1440 ticks per revolution	
-	ticks_per_m = 1440/(math.pi*2*R)
+	# ticks/m... 1316 ticks per revolution	
+	ticks_per_m = 1316/(math.pi*2*R)
 
 	# Distance moved by each wheel
 	ticks_l_curr = data.data[0]
@@ -110,14 +103,8 @@ def callbackTicks(data):
 	br.sendTransform((x, y, z),
 					 quat,
 					 rospy.Time.now(),
-					 "/base_link",
+					 "/base_footprint",
 					 "/odom")
-
-	seq += 1
-	if (seq == 10):
-		seq = 0
-		print(str(x) + ',' + str(y) + ',' + str(z))
-
 
 def main():
 	# start node
