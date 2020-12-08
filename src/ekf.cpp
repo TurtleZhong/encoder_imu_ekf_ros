@@ -231,7 +231,8 @@ void EKF(const Eigen::MatrixXf & H, const Eigen::MatrixXf & R, const Eigen::Matr
 
 // encoders callback
 void encoders_callback(const std_msgs::Int32MultiArray::ConstPtr& msg)
-{		
+{	
+	//std::cout << "ENCODER\n";	
 	int ticks_l_curr = msg->data[0]; // total ticks left wheel
 	int ticks_r_curr = msg->data[1]; // total ticks right wheel
 	
@@ -313,7 +314,9 @@ Eigen::Matrix<float,3,1> quats_to_small(Eigen::Quaterniond p_meas,Eigen::Quatern
 
 void fuse_orientation(const sensor_msgs::Imu::ConstPtr& msg)
 {
-	float mag_field = 1;
+	//std::cout << "FUSION\n";
+
+	float mag_field = 100.0;
 	// predicted orientation from IMU
 	Eigen::Quaterniond p_meas;
 	p_meas.w() = msg->orientation.w;
@@ -329,9 +332,9 @@ void fuse_orientation(const sensor_msgs::Imu::ConstPtr& msg)
 	Eigen::Matrix<float,1,15> Ho = Eigen::Matrix<float,1,15>::Zero();
 	//Ho.setZero(1,15);
 	//Ho.block<3,3>(0,6) = Eigen::Matrix<float,3,3>::Identity();
-	//Ho.block<3,3>(0,3) = Eigen::Matrix<float,3,3>::Identity();
+//	//Ho.block<3,3>(0,3) = Eigen::Matrix<float,3,3>::Identity();
 	//Ho(2,7) = 1.0*mag_field;
-	Ho(0,8) =-1.0*mag_field;
+	Ho(0,8) =mag_field;
 	
 	// predicted quaternion TODO @V quaternion or rho ?
 	Eigen::Quaterniond p_pred;
@@ -357,7 +360,7 @@ void fuse_orientation(const sensor_msgs::Imu::ConstPtr& msg)
         z(0,0) = small(2,0);
 	
 	// call filter
-	//EKF(H,R,z,false);
+	EKF(H,R,z,false);
 }
 
 
@@ -366,6 +369,7 @@ void fuse_orientation(const sensor_msgs::Imu::ConstPtr& msg)
 // Prediction Step/Time Propogation/State Update/Vehicle Kinematics step
 void imu_callback(const sensor_msgs::Imu::ConstPtr& msg)
 {
+	//std::cout << "IMU\n";
 	// Uncomment to time things
 	//filter.timer.PrintDt("Ignore"); 
 	//filter.timer.PrintDt("IMU"); 
@@ -488,7 +492,7 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& msg)
 	}
 
 	//Call "Sun Sensor" fusion TODO move up and make parallel
-	//fuse_orientation(msg);
+	fuse_orientation(msg);
 
 }
 //TODO include IMU's orientation into this EKF (as if it was a sun sensor. @V
@@ -559,7 +563,7 @@ void initialize_ekf(ros::NodeHandle &n)
 					//note that the slip can only cause you to overshoot your estimate
 
 		// robot dimensional parameters
-		n.param<float>("L",filter.L, 0.6096); // base width (m)
+		n.param<float>("L",filter.L, 0.6096); // base width (m) was 0.6096
 		n.param<float>("R",filter.R, 0.127); // wheel radius (m)
 		n.param<int>("ticks_per_rev", filter.ticks_per_rev, 1440); // wheel encoder parameters
 		n.param<float>("ticks_per_m", filter.ticks_per_m,filter.ticks_per_rev/(PI*2*filter.R));
