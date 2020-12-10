@@ -23,6 +23,7 @@ ticks_l_prev = 0
 tickr_r_prev = 0
 first_time_encoder = True
 quat = []
+seq = 0
 
 # previous covariance
 # update orientation here. use RK3
@@ -44,7 +45,7 @@ def rotate(q1, v):
 	)[:3]
 
 def callbackTicks(data):
-	global x, y, z, quat, ticks_l_prev, ticks_r_prev, first_time_encoder
+	global x, y, z, quat, ticks_l_prev, ticks_r_prev, first_time_encoder, seq
 
 	if (len(quat) == 0):
 		return
@@ -91,11 +92,10 @@ def callbackTicks(data):
 	odom.header.seq = seq
 	odom.header.stamp = rospy.Time.now()
 	odom.header.frame_id = "odom"
+	seq += 1
 
 	# pose
-	# quaternion created from yaw, pitch, roll. the 'szyx' means rotation applied to moving frame in order z y x (yaw, pitch, roll)
-	odom_quat = tf.transformations.quaternion_from_euler(psi, theta, phi, 'rzyx')
-	odom.pose.pose = Pose(Point(x, y, z), Quaternion(*odom_quat))
+	odom.pose.pose = Pose(Point(x, y, z), Quaternion(quat[0],quat[1],quat[2],quat[3]))
 	odom_pub.publish(odom)
 
 	# publish tf

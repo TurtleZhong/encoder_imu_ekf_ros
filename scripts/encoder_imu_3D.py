@@ -18,11 +18,7 @@ x = 0
 y = 0
 z = 0
 imu_height = 0.3
-psi = 0 # yaw
-theta = 0 # pitch
-phi = 0 # roll
 seq = 0
-psi_offset = 0
 
 # record previous state 
 ticks_l_prev = 0
@@ -99,6 +95,7 @@ def callbackTicks(data):
 	odom.header.seq = seq
 	odom.header.stamp = rospy.Time.now()
 	odom.header.frame_id = "odom"
+	seq += 1
 
 	# pose
 	global imu_height
@@ -113,7 +110,6 @@ def callbackTicks(data):
 					 rospy.Time.now(),
 					 "/base_footprint",
 					 "/odom")
-	seq += 1
 
 
 def main():
