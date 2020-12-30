@@ -68,6 +68,10 @@ int ticks_l_prev;
 int ticks_r_prev;
 Eigen::Matrix<double,3,3> Re = Eigen::Matrix<double,3,3>::Zero(); // measurement noise matrix
 
+// variables used for measurement update for "sun sensor" orientation
+bool first_time_or = true;
+Eigen::Matrix<double,1,1> Rs = Eigen::Matrix<double,1,1>::Zero(); // orientation msmt noise matrix
+
 // printing function
 void debug(const std::string & str);
 

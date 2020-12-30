@@ -167,6 +167,78 @@ void encoderMeasurementUpdate()
 
 }
 
+
+//Takes the predicted and measured quaternions and returns the small angle (error) between them
+Eigen::Matrix<double,3,1> quats_to_small(Eigen::Quaterniond p_meas,Eigen::Quaterniond p_pred)
+{
+	Eigen::Matrix3d R_m = p_meas.normalized().toRotationMatrix();
+	Eigen::Matrix3d R_p = p_pred.normalized().toRotationMatrix();
+	Eigen::Matrix3d R = (R_m.transpose()) * R_m;
+	//std::cout << "Here is the matrix m:\n" << std::endl << R << std::endl;
+
+	Eigen::Matrix<double,3,1>res = Eigen::Matrix<double,3,1>::Zero();
+	res(0) = -1.0*R(1,2);
+	res(1) = -1.0*R(2,0);
+	res(2) = -1.0*R(0,1);
+	//std::cout << "here is res\n" << std::endl << res << std::endl;
+	return res;
+}
+
+void fuse_orientation(const sensor_msgs::Imu::ConstPtr& msg)
+{
+	//std::cout << "FUSION\n";
+
+	double mag_field = 1;
+	// predicted orientation from IMU
+	Eigen::Quaterniond p_meas;
+	p_meas.w() = msg->orientation.w;
+	p_meas.x() = msg->orientation.x;
+	p_meas.y() = msg->orientation.y;
+	p_meas.z() = msg->orientation.z;
+
+	//TODO "subtract" out initial orientation @V ?
+	//std::cout << msg->orientation.w << msg->orientation.x << msg->orientation.y << msg->orientation.z << "YO\n";
+	//std::cout <<  p_meas.w() << p_meas.x() << p_meas.y() <<  p_meas.z();
+
+	// encoder measurement matrix: Ho is 3 x 15
+	Eigen::Matrix<double,1,15> Ho = Eigen::Matrix<double,1,15>::Zero();
+	//Ho.setZero(1,15);
+	//Ho.block<3,3>(0,6) = Eigen::Matrix<float,3,3>::Identity();
+//	//Ho.block<3,3>(0,3) = Eigen::Matrix<float,3,3>::Identity();
+	//Ho(2,7) = 1.0*mag_field;
+	Ho(0,6) =-1*mag_field;
+	
+	// predicted quaternion TODO @V quaternion or rho ?
+	Eigen::Quaterniond p_pred;
+	p_pred.w() = state(6);
+	p_pred.x() = state(7);
+	p_pred.y() = state(8);
+	p_pred.z() = state(9);
+
+	// variables to fill
+	Eigen::MatrixXd H; // measurement matrix
+	Eigen::MatrixXd R; // noise matrix
+	Eigen::MatrixXd small; // predicted measurement
+	Eigen::MatrixXd y_meas; // actual measurement
+	
+	// measurement and noise matrices 
+	H = Ho;
+	R = Rs;
+	
+ 	small =  quats_to_small(p_meas, p_pred);
+	
+	// residual z
+	Eigen::Matrix<double,1,1> z = Eigen::Matrix<double,1,1>::Zero();
+        z(0,0) = (double)(small(2,0));
+	
+	// call filter
+	EKF(H,R,z,false);
+}
+
+
+
+
+
 // updates state. general to measurements given appropriately sized 
 void EKF(const Eigen::MatrixXd & H, const Eigen::MatrixXd & R, const Eigen::MatrixXd & z, const bool update_bias)
 {
@@ -455,6 +527,8 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& msg)
 		transform.setRotation(q);
 		br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "IMU"));
 	}
+	
+	fuse_orientation(msg);
 
 }
 //TODO include IMU's orientation into this EKF (as if it was a sun sensor. @V
@@ -508,6 +582,8 @@ void initialize_ekf(ros::NodeHandle &n)
 
 		// noise matrix for accelerometer (Ra)
 		filter.Ra = Eigen::Matrix<double,3,3>::Identity(3,3)*(sigma_nua*sigma_nua);
+		Rs = Eigen::Matrix<double,1,1>::Zero(1,1);//Identity(1,1)*(sigma_nua*sigma_nua);//TODO @V fix: value
+		
 
 		// gravity vector
 		n.param<double>("g",filter.g,9.80665);
