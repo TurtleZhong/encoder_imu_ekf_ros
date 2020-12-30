@@ -6,6 +6,7 @@
 #include <chrono>
 #include <string.h>
 #include <iostream>
+#include "nav_msgs/Odometry.h"
 
 // timer class to time parts of
 class Timer 
@@ -103,6 +104,9 @@ void computeQdk(const Eigen::Matrix<double,3,3> &R_body_to_nav_next, Eigen::Matr
 
 // measurement update using rover kinematic model
 void encoderMeasurementUpdate();
+
+// measurement update using VO results
+void voMeasurementUpdate(nav_msgs::Odometry msg);
 
 // measurement update using gravity prediction
 void stationaryMeasurementUpdate(const Eigen::Matrix<double,3,3> & R_body_to_nav);

@@ -8,6 +8,10 @@
 #include "std_msgs/Int32MultiArray.h"
 #include <tf/transform_broadcaster.h>
 #include <cstdlib>
+#include "nav_msgs/Odometry.h"
+
+
+ros::Publisher pose_pub;//publishes nav_msgs/Odometry on /pose
 
 void debug(auto str)
 {
@@ -164,6 +168,53 @@ void encoderMeasurementUpdate()
 
 }
 
+
+void voMeasurementUpdate(nav_msgs::Odometry msg)
+{
+	//TODO add in orientation?
+	
+	// predicted position from encoder model
+	Eigen::Matrix<double,3,1> p_meas = Eigen::Matrix<double,3,1>::Zero();
+	p_meas(0,0) = msg.pose.pose.position.x;
+	p_meas(1,0) = msg.pose.pose.position.y;
+	p_meas(2,0) = msg.pose.pose.position.z;
+
+	// encoder measurement matrix: He is 3 x 15
+	Eigen::Matrix<double,3,15> He = Eigen::Matrix<double,3,15>::Zero();
+	He.setZero(3,15);
+	He.block<3,3>(0,0) = Eigen::Matrix<double,3,3>::Identity();
+
+	// predicted position
+	Eigen::Matrix<double,3,1> p_pred = state(Eigen::seq(0,2));
+
+	// variables to fill
+	Eigen::MatrixXd H; // measurement matrix
+	Eigen::MatrixXd R; // noise matrix
+	Eigen::MatrixXd y_pred; // predicted measurement
+	Eigen::MatrixXd y_meas; // actual measurement
+
+	// measurement and noise matrices depend on encoder only
+	H = He;
+	R = Re;
+
+	y_pred = Eigen::Matrix<double,3,1>::Zero();
+	y_meas = Eigen::Matrix<double,3,1>::Zero();
+
+	// predicted measurement is position
+	y_pred << p_pred(0), p_pred(1), p_pred(2);
+
+	// actual measurement is output position
+	y_meas << p_meas(0), p_meas(1), p_meas(2);
+
+	// residual z
+	Eigen::Matrix<double,3,1> z = y_meas-y_pred;
+
+	// call filter
+	EKF(H,R,z,false);
+
+}
+
+
 // updates state. general to measurements given appropriately sized 
 void EKF(const Eigen::MatrixXd & H, const Eigen::MatrixXd & R, const Eigen::MatrixXd & z, const bool update_bias)
 {
@@ -232,6 +283,23 @@ void EKF(const Eigen::MatrixXd & H, const Eigen::MatrixXd & R, const Eigen::Matr
 		// {
 		// 	std::cout << state(0) << "," << state(1) << "," << state(2) << std::endl;
 		// }
+
+		/*for display purposes TODO add covariance TODO remove*/
+                nav_msgs::Odometry msg;
+                msg.header.frame_id = "map";
+                ros::Time cur = ros::Time::now();
+                msg.header.stamp.sec = cur.toSec();
+                msg.header.stamp.nsec = cur.toNSec();
+                msg.pose.pose.position.x = state[0];
+                msg.pose.pose.position.y = state[1];
+                msg.pose.pose.position.z = state[2];
+                msg.pose.pose.orientation.x = q.x();
+                msg.pose.pose.orientation.y = q.y();
+                msg.pose.pose.orientation.z = q.z();
+                msg.pose.pose.orientation.w = q.w();
+
+                pose_pub.publish(msg);
+
 	}
 }
 
@@ -537,11 +605,17 @@ int main(int argc, char **argv)
 	// initialize ekf
 	initialize_ekf(n);
 
+	//pose publisher
+        pose_pub = n.advertise<nav_msgs::Odometry>("pose", 1000);
+
 	// encoder callback
 	ros::Subscriber sub_encoders = n.subscribe("wheels", 0, encoders_callback);
 
 	// imu callback
 	ros::Subscriber sub_imu = n.subscribe("/imu/data", 0, imu_callback);
+
+	//vo callback
+	ros::Subscriber sub_vo = n.subscribe("/vo_odom", 0, voMeasurementUpdate); //TODO change to match style i.e. vo_callback
 
 	ros::spin();
 
