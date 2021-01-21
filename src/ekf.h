@@ -69,6 +69,9 @@ int ticks_l_prev;
 int ticks_r_prev;
 Eigen::Matrix<double,3,3> Re = Eigen::Matrix<double,3,3>::Zero(); // measurement noise matrix
 
+// variables used for measurement update for vo
+Eigen::Matrix<double,3,3> Rv = Eigen::Matrix<double,3,3>::Zero(); // measurement noise matrix
+
 // printing function
 void debug(const std::string & str);
 

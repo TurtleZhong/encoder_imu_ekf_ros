@@ -171,7 +171,6 @@ void encoderMeasurementUpdate()
 
 void voMeasurementUpdate(nav_msgs::Odometry msg)
 {
-	//TODO add in orientation?
 	
 	// predicted position from encoder model
 	Eigen::Matrix<double,3,1> p_meas = Eigen::Matrix<double,3,1>::Zero();
@@ -180,12 +179,13 @@ void voMeasurementUpdate(nav_msgs::Odometry msg)
 	p_meas(2,0) = msg.pose.pose.position.z;
 
 	// encoder measurement matrix: He is 3 x 15
-	Eigen::Matrix<double,3,15> He = Eigen::Matrix<double,3,15>::Zero();
-	He.setZero(3,15);
-	He.block<3,3>(0,0) = Eigen::Matrix<double,3,3>::Identity();
+	Eigen::Matrix<double,3,15> Hv = Eigen::Matrix<double,3,15>::Zero();
+	Hv.setZero(3,15);
+	Hv.block<3,3>(0,0) = Eigen::Matrix<double,3,3>::Identity();
 
 	// predicted position
 	Eigen::Matrix<double,3,1> p_pred = state(Eigen::seq(0,2));
+
 
 	// variables to fill
 	Eigen::MatrixXd H; // measurement matrix
@@ -194,8 +194,8 @@ void voMeasurementUpdate(nav_msgs::Odometry msg)
 	Eigen::MatrixXd y_meas; // actual measurement
 
 	// measurement and noise matrices depend on encoder only
-	H = He;
-	R = Re;
+	H = Hv;
+	R = Rv;
 
 	y_pred = Eigen::Matrix<double,3,1>::Zero();
 	y_meas = Eigen::Matrix<double,3,1>::Zero();
@@ -553,6 +553,9 @@ void initialize_ekf(ros::NodeHandle &n)
 
 		// noise matrix for accelerometer (Ra)
 		filter.Ra = Eigen::Matrix<double,3,3>::Identity(3,3)*(sigma_nua*sigma_nua);
+		// noise matrix for vo (Rv)
+                Rv = Eigen::Matrix<double,3,3>::Identity(3,3)*(sigma_nua*sigma_nua);
+
 
 		// gravity vector
 		n.param<double>("g",filter.g,9.80665);
