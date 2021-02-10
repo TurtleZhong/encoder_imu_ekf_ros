@@ -196,6 +196,20 @@ void fuse_orientation(const sensor_msgs::Imu::ConstPtr& msg)
 	p_meas.y() = msg->orientation.y;
 	p_meas.z() = msg->orientation.z;
 
+	double err = 0;
+	err += (1-p_meas.w())*(1-p_meas.w());
+	err += (0-p_meas.x())*(0-p_meas.x());
+	err += (0-p_meas.y())*(0-p_meas.y());
+	err += (0-p_meas.z())*(0-p_meas.z());
+	
+	if(err<0.01)
+	{
+		//std::cout << "Orientation too close to 0 0 0 1!\n";
+		return;
+	}
+
+	std::cout << "Orientation NOT too close to 0 0 0 1!\n";
+
 	//TODO "subtract" out initial orientation @V ?
 	//std::cout << msg->orientation.w << msg->orientation.x << msg->orientation.y << msg->orientation.z << "YO\n";
 	//std::cout <<  p_meas.w() << p_meas.x() << p_meas.y() <<  p_meas.z();
@@ -333,6 +347,9 @@ void EKF(const Eigen::MatrixXd & H, const Eigen::MatrixXd & R, const Eigen::Matr
 // encoders callback
 void encoders_callback(const std_msgs::Int32MultiArray::ConstPtr& msg)
 {		
+
+	std::cout << "ENC\n";
+
 	int ticks_l_curr = (msg->data[0]+msg->data[2])/2.0; // total ticks left wheel
 	int ticks_r_curr = (msg->data[1]+msg->data[3])/2.0; // total ticks right wheel
 	
@@ -413,6 +430,8 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& msg)
 	// Uncomment to time things
 	//filter.timer.PrintDt("Ignore"); 
 	//filter.timer.PrintDt("IMU"); 
+	
+	std::cout << "IMU\n";
 
 	// IMU data
 	geometry_msgs::Vector3 w = msg->angular_velocity;
@@ -528,7 +547,7 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& msg)
 		br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "IMU"));
 	}
 	
-	fuse_orientation(msg);
+	//fuse_orientation(msg);
 
 }
 //TODO include IMU's orientation into this EKF (as if it was a sun sensor. @V
@@ -643,7 +662,7 @@ int main(int argc, char **argv)
 	ros::Subscriber sub_encoders = n.subscribe("wheels", 0, encoders_callback);
 
 	// imu callback
-	ros::Subscriber sub_imu = n.subscribe("/imu/data", 0, imu_callback);
+	ros::Subscriber sub_imu = n.subscribe("/imu/data", 0, fuse_orientation);
 
 	ros::spin();
 
