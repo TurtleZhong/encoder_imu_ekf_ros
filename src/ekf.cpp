@@ -11,6 +11,7 @@
 #include "nav_msgs/Odometry.h"
 
 ros::Publisher pose_pub;//publishes nav_msgs/Odometry on /pose
+ros::Publisher tmp_pub;//publishes nav_msgs/Odometry on /tmp_pose
 
 void debug(auto str)
 {
@@ -184,7 +185,39 @@ Eigen::Matrix<double,3,1> quats_to_small(Eigen::Quaterniond p_meas,Eigen::Quater
 	return res;
 }
 
+Eigen::Matrix3d inv_of_start_or = Eigen::Matrix<double,3,3>::Identity();
+
 void fuse_orientation(const sensor_msgs::Imu::ConstPtr& msg)
+{
+	Eigen::Quaterniond p_meas;
+        p_meas.w() = msg->orientation.w;
+        p_meas.x() = msg->orientation.x;
+        p_meas.y() = msg->orientation.y;
+        p_meas.z() = msg->orientation.z;
+
+	Eigen::Matrix3d corrected_p_meas = (inv_of_start_or * p_meas.normalized().toRotationMatrix());
+	Eigen::Quaterniond c_p_meas(corrected_p_meas);
+
+	/*for display purposes TODO add covariance TODO remove*/
+        nav_msgs::Odometry mesg;
+        mesg.header.frame_id = "map";
+        ros::Time cur = ros::Time::now();
+        mesg.header.stamp.sec = cur.toSec();
+        mesg.header.stamp.nsec = cur.toNSec();
+        mesg.pose.pose.position.x = state[0];
+        mesg.pose.pose.position.y = state[1];
+        mesg.pose.pose.position.z = state[2];
+        mesg.pose.pose.orientation.x =  c_p_meas.x();
+        mesg.pose.pose.orientation.y =  c_p_meas.y();
+        mesg.pose.pose.orientation.z =  c_p_meas.z();
+        mesg.pose.pose.orientation.w =  c_p_meas.w();
+
+        tmp_pub.publish(mesg);
+
+
+}
+
+void fuse_orientation_old(const sensor_msgs::Imu::ConstPtr& msg)
 {
 	//std::cout << "FUSION\n";
 
@@ -348,7 +381,7 @@ void EKF(const Eigen::MatrixXd & H, const Eigen::MatrixXd & R, const Eigen::Matr
 void encoders_callback(const std_msgs::Int32MultiArray::ConstPtr& msg)
 {		
 
-	std::cout << "ENC\n";
+	//std::cout << "ENC\n";
 
 	int ticks_l_curr = (msg->data[0]+msg->data[2])/2.0; // total ticks left wheel
 	int ticks_r_curr = (msg->data[1]+msg->data[3])/2.0; // total ticks right wheel
@@ -547,7 +580,7 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& msg)
 		br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "IMU"));
 	}
 	
-	//fuse_orientation(msg);
+	fuse_orientation(msg);
 
 }
 //TODO include IMU's orientation into this EKF (as if it was a sun sensor. @V
@@ -574,6 +607,16 @@ void initialize_ekf(ros::NodeHandle &n)
 		geometry_msgs::Quaternion b = srv.response.init_orientation;
 		Eigen::Vector3d x_g = {srv.response.gyro_bias[0].data, srv.response.gyro_bias[1].data, srv.response.gyro_bias[2].data}; //biases
 		//TODO accelearation biases
+		
+		
+		//For fusing orientation
+		Eigen::Quaterniond in_or;
+		in_or.w() = b.w;
+	        in_or.x() = b.x;
+	        in_or.y() = b.y;
+	 	in_or.z() = b.z;
+
+		inv_of_start_or = (in_or.normalized().toRotationMatrix()).inverse();
 
 		// filter rate parameters
 		int num_data, hz; // number of data points used to initialize, imu hz
@@ -657,12 +700,18 @@ int main(int argc, char **argv)
 
 	//pose publisher
         pose_pub = n.advertise<nav_msgs::Odometry>("pose", 1000);
+	
+	//temporary publisher
+	tmp_pub = n.advertise<nav_msgs::Odometry>("tmp_pose", 1000);
+
+
+
 
 	// encoder callback
 	ros::Subscriber sub_encoders = n.subscribe("wheels", 0, encoders_callback);
 
 	// imu callback
-	ros::Subscriber sub_imu = n.subscribe("/imu/data", 0, fuse_orientation);
+	ros::Subscriber sub_imu = n.subscribe("/imu/data", 0, imu_callback);
 
 	ros::spin();
 
