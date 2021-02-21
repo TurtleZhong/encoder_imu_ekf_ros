@@ -63,6 +63,10 @@ def callbackTicks(data):
 	# ticks/m... 1316 ticks per revolution	
 	ticks_per_m = 1316/(math.pi*2*R)
 
+        #constant slip param
+        slip_parameter = 1.22;
+        ticks_per_m = 1316/(math.pi*2*R)*slip_parameter;
+
 	# Distance moved by each wheel
 	ticks_l_curr = data.data[0]
 	ticks_r_curr = data.data[1]
